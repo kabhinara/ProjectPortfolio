@@ -1,0 +1,193 @@
+// Task 2C - MazeSolver Bot
+
+module t2c_maze_explorer (
+    input clk,
+    input rst_n,
+    input left, mid, right, // 0 - no wall, 1 - wall
+    output reg [2:0] move
+);
+
+/*
+
+| cmd | move  | meaning   |
+|-----|-------|-----------|
+| 000 | 0     | STOP      |
+| 001 | 1     | FORWARD   |
+| 010 | 2     | LEFT      |
+| 011 | 3     | RIGHT     | 
+| 100 | 4     | U_TURN    |
+
+START POS   : 4,0
+EXIT POS    : 4,8
+DEADENDS    : 9
+
+*/
+//////////////////DO NOT MAKE ANY CHANGES ABOVE THIS LINE //////////////////
+
+/*
+Add your logic here
+*/
+reg state,flag;
+reg [1:0] dir;
+reg [7:0] pos;
+reg mark[98:0];
+integer i;
+wire [7:0] rpos,lpos,mpos,bpos;
+wire [3:0] rdist,ldist,mdist;
+wire [6:0] lindex,index,bindex;
+initial flag = 1;
+
+assign bpos = (dir == 0) ? {pos[7:4], pos[3:0] - 4'b1} : (dir==1) ? {pos[7:4] - 4'b1, pos[3:0]} : (dir==2) ? {pos[7:4], pos[3:0] + 4'b1} : {pos[7:4] + 4'b1, pos[3:0]}; 
+assign mpos = (dir == 0) ? {pos[7:4], pos[3:0] + 4'b1} : (dir==1) ? {pos[7:4] + 4'b1, pos[3:0]} : (dir==2) ? {pos[7:4], pos[3:0] - 4'b1} : {pos[7:4] - 4'b1, pos[3:0]}; 
+assign rpos = (dir == 0) ? {pos[7:4] - 4'b1, pos[3:0]} : (dir==1) ? {pos[7:4], pos[3:0] + 4'b1} : (dir==2) ? {pos[7:4] + 4'b1, pos[3:0]} : {pos[7:4], pos[3:0] - 4'b1};
+assign lpos = (dir == 0) ? {pos[7:4] + 4'b1, pos[3:0]} : (dir==1) ? {pos[7:4], pos[3:0] - 4'b1} : (dir==2) ? {pos[7:4] - 4'b1, pos[3:0]} : {pos[7:4], pos[3:0] + 4'b1}; 
+
+assign ldist = lpos[7:4] > 4'b0100 ? lpos[7:4] - 4'b0100 + lpos[3:0] : 4'b0100 - lpos[7:4] + lpos[3:0];
+assign rdist = rpos[7:4] > 4'b0100 ? rpos[7:4] - 4'b0100 + rpos[3:0] : 4'b0100 - rpos[7:4] + rpos[3:0];
+assign mdist = mpos[7:4] > 4'b0100 ? mpos[7:4] - 4'b0100 + mpos[3:0] : 4'b0100 - mpos[7:4] + mpos[3:0];
+
+assign index = pos[7:4] + pos[3:0]*9;
+assign bindex = (dir==0) ? index-7'b0001001 : (dir==1) ? index-7'b0000001 : (dir==2) ? index+7'b0001001 : index+7'b0000001;
+//assign mindex = 2*index - bindex;
+assign lindex = (dir==0) ? index+7'b0000001 : (dir==1) ? index-7'b0001001 : (dir==2) ? index-7'b0000001 : index+7'b0001001;
+//assign rindex = 2*index - lindex;
+
+
+always @(negedge clk or negedge rst_n) begin
+	if (!rst_n) begin
+		flag <= 1;
+		pos <= 8'b01001001;
+   	dir <= 2;
+	move <= 3'b000;
+		i = 0;
+		for (i = 0; i < 9; i = i + 1) begin
+			mark[i] <= 1'b0;
+		end
+		for (i = 9; i < 90; i = i + 1) begin
+			mark[i] <= 1'bx;
+		end
+		for (i = 90; i < 99; i = i + 1) begin
+			mark[i] <= 1'b1;
+		end
+		state <= 1;
+	end
+	else begin
+		case (state)
+		default : state <= 1;
+		0: begin
+			if (move==1) pos <= mpos;
+			else if (move==2) begin
+				pos <= lpos;
+				dir <= (dir == 2'b11) ? 2'b00 : dir + 2'b01;
+			end
+			else if (move==3) begin
+				pos <= rpos;
+				dir <= (dir == 2'b00) ? 2'b11 : dir - 2'b01;
+			end
+			else if (move==4) begin
+				pos <= bpos;
+				dir <= (dir>1) ? dir - 2 : dir + 2;
+			end
+			mark[index] <= flag;
+			state <= 1;
+		end
+		
+		1: begin
+			if (pos==8'b01000001 & !flag) move <= 3'b100;
+			else if (!((mid == left) && (left == right))) begin
+				if (!mid^!left^!right) begin
+					if (!mid & !(mark[2*index-bindex] === 1)) move <= 3'b001;
+					else if (!left & !(mark[lindex] === 1)) move <= 3'b010;
+					else if (!right & !(mark[2*index-lindex] === 1)) move <= 3'b011;
+					else move <= 3'b100;
+				end
+				
+				else begin
+					if ((mark[bindex] === 1'b1) & ((!left & (mark[lindex] === 1'b1)) 
+					| (!right & (mark[(2*index-lindex)] === 1'b1)) 
+					| (!mid & (mark[(2*index-bindex)] === 1'b1)))) flag <= 1;
+					else flag <= 0;
+					
+					
+					if ((left | mark[lindex]===1) & (mid | mark[2*index-bindex]===1) & (right | mark[2*index-lindex]===1)) begin
+						move <= 3'b100;
+						flag <= 1;
+					end
+					else if (mid) begin
+						if (mark[(2*index-lindex)] === mark[lindex]) move <= (rdist > ldist) ? 3'b011 : 3'b010;
+						else if (mark[lindex]===1'bx) move <= 3'b010;
+						else if (mark[2*index-lindex] === 1'bx) move <= 3'b011;
+						else move <= mark[lindex] ? 3'b011 : 3'b010;
+					
+//						if ((!mark[(2*index-lindex)] & mark[lindex]===1'bx) | mark[(2*index-lindex)]) move <= 3'b010;
+//						else if ((!mark[lindex] & mark[(2*index-lindex)]===1'bx) | mark[lindex]) move <= 3'b011;
+//						else move <= (rdist > ldist) ? 3'b011 : 3'b010;
+//						if (!(mark[bindex] & (mark[lindex] | mark[2*index-lindex]))) flag <= 0;
+					end
+					
+					else if (left) begin
+						if (mark[(2*index-lindex)] === mark[2*index-bindex]) move <= (rdist > mdist) ? 3'b011 : 3'b001;
+						else if (mark[2*index-lindex]===1'bx) move <= 3'b011;
+						else if (mark[2*index-bindex] === 1'bx) move <= 3'b001;
+						else move <= mark[2*index-lindex] ? 3'b001 : 3'b011;
+					
+//						if ((!mark[(2*index-bindex)] & mark[(2*index-lindex)]) | mark[(2*index-bindex)]) move <= 3'b011;
+//						else if ((!mark[(2*index-lindex)] & mark[(2*index-bindex)]) | mark[(2*index-lindex)]) move <= 3'b001;
+//						else move <= (mdist > rdist) ? 3'b001 : 3'b011;
+//						if (!(mark[bindex] & (mark[2*index-bindex] | mark[2*index-lindex]))) flag <= 0;
+					end
+					
+					else begin
+						if (mark[(2*index-bindex)] === mark[lindex]) move <= (mdist > ldist) ? 3'b001 : 3'b010;
+						else if (mark[lindex]===1'bx) move <= 3'b010;
+						else if (mark[2*index-bindex] === 1'bx) move <= 3'b001;
+						else move <= mark[lindex] ? 3'b001 : 3'b010;
+					
+//						if ((!mark[(2*index-bindex)] & mark[lindex]) | mark[(2*index-bindex)]) move <= 3'b010;
+//						else if ((!mark[lindex] & mark[(2*index-bindex)]) | mark[lindex]) move <= 3'b001;
+//						else move <= (mdist > ldist) ? 3'b001 : 3'b010;
+//						if (!(mark[bindex] & (mark[2*index-bindex] | mark[lindex]))) flag <= 0;
+					end
+					
+				end
+			end
+			
+			else if (left&right&mid) begin
+				move <= 3'b100;
+				flag <= 1;
+			end
+			
+			else if (!left&!right&!mid) begin
+				if ((mark[bindex] === 1'b1) & (((mark[lindex] === 1'b1) & (mark[(2*index-lindex)] === 1'b1)) 
+				| ((mark[(2*index-bindex)] === 1'b1) & (mark[2*index-lindex] === 1'b1)) 
+				| ((mark[2*index-bindex] === 1'b1) & (mark[lindex] === 1'b1)))) flag <= 1;
+				else flag <= 0;
+
+				if (mark[lindex] & mark[2*index-lindex] & mark[2*index-bindex]) begin
+				    move <= 3'b100;
+				    flag <= 1;
+				end
+			   else if ((mark[lindex]===mark[2*index-lindex]) & (mark[lindex]===mark[2*index-bindex])) move <= (rdist > ldist) ? ((mdist > rdist) ? 3'b001 : 3'b011) : 3'b010;
+				else if (mark[lindex]===1'bx & mark[2*index-lindex]===1'bx) move <= (rdist > ldist) ? 3'b011 : 3'b010;
+				else if (mark[lindex]===1'bx & mark[2*index-bindex]===1'bx) move <= (mdist > ldist) ? 3'b001 : 3'b010;
+				else if (mark[2*index-lindex]===1'bx & mark[2*index-bindex]===1'bx) move <= (mdist > rdist) ? 3'b001 : 3'b011;
+				else if (mark[lindex]===1'bx) move <= 3'b010;
+				else if (mark[2*index-lindex]===1'bx) move <= 3'b011;
+				else if (mark[2*index-bindex]===1'bx) move <= 3'b001;
+				else if (mark[2*index-bindex]===1 & mark[lindex]===0 & mark[2*index-lindex]===0) move <= (rdist>ldist) ? 3'b011 : 3'b010;
+				else if (mark[lindex]===1 & mark[2*index-bindex]===0 & mark[2*index-lindex]===0) move <= (mdist>rdist) ? 3'b001 : 3'b011;
+				else if (mark[2*index-lindex]===1 & mark[2*index-bindex]===0 & mark[lindex]===0) move <= (mdist>ldist) ? 3'b001 : 3'b010;
+				else if (!mark[lindex]) move <= 3'b010;
+				else if (!mark[2*index-lindex]) move <= 3'b011;
+				else move <= 3'b001;
+			end
+			
+			state <= 0;
+			end
+		endcase
+    end
+end
+
+//////////////////DO NOT MAKE ANY CHANGES BELOW THIS LINE //////////////////
+
+endmodule

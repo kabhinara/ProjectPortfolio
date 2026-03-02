@@ -1,0 +1,242 @@
+module bt_debug (
+    input clk_3125,
+    input rst_n,
+    input bt_debug_enable,
+    input [7:0] rx_msg,
+    input rx_complete,
+    
+    // Debug Interface
+    input move_done_pulse,
+    input [7:0] pos,
+    input [2:0] next_move,
+    input wall_l, wall_m, wall_r,
+    output reg proceed,
+
+    output reg bt_ready,
+    output reg [3:0] deadend_count,
+    output reg busy,
+    output tx
+);
+
+    // Message buffer (max 32 chars)
+    reg [7:0] msg_buf [0:31];
+    reg [5:0] msg_len;
+    reg [5:0] tx_idx;
+    
+    // TX interface
+    reg [7:0] tx_data;
+    reg tx_start;
+    wire tx_done;
+    
+    // FSM states
+    localparam S_IDLE        = 0;
+    localparam S_BUFFERING   = 1;
+    localparam S_VALIDATE    = 2;
+    localparam S_SEND_OK     = 3;      
+    localparam S_SEND_MSG    = 4;      
+    localparam S_SEND_CRLF   = 5;      
+    localparam S_TX_WAIT     = 6;
+    localparam S_TX_GAP      = 7;      
+    localparam S_SEND_DONE   = 8;      // Send "DONE-L-M-R-X-Y-MOV-#"
+
+    reg [3:0] state;
+    reg [3:0] return_state;
+    reg [5:0] ok_idx;  
+    reg [5:0] done_idx; 
+    reg crlf_idx;      
+    reg [9:0] gap_timer;
+    reg move_done_prev;
+    reg already_sent_done;
+    reg [5:0] report_delay_cnt;
+    reg [2:0] last_valid_move;
+    reg report_pending;
+
+    // Binary to ASCII Helpers
+    function [7:0] to_ascii;
+        input [3:0] val;
+        begin to_ascii = val + 48; end
+    endfunction
+    
+    uart_tx tx_inst (
+        .clk_3125(clk_3125),
+        .rst_n(rst_n),
+        .data(tx_data),
+        .parity_type(1'b0),
+        .tx_start(tx_start),
+        .tx(tx),
+        .tx_done(tx_done)
+    );
+
+    always @(posedge clk_3125 or negedge rst_n) begin
+        if (!rst_n) begin
+            state <= S_IDLE;
+            msg_len <= 0;
+            tx_idx <= 0;
+            tx_start <= 0;
+            busy <= 0;
+            ok_idx <= 0;
+            crlf_idx <= 0;
+            bt_ready <= 0;
+            deadend_count <= 0;
+            gap_timer <= 0;
+            proceed <= 0;
+            move_done_prev <= 0;
+            already_sent_done <= 0;
+            report_delay_cnt <= 0;
+            report_pending <= 0;
+            last_valid_move <= 0;
+        end else begin
+            tx_start <= 0;
+            // Pulse cleaning
+            if (tx_done || state != S_IDLE) proceed <= 0; 
+
+            move_done_prev <= move_done_pulse;
+            
+            // Re-arm reporting ONLY when robot physically starts moving (Falling Edge)
+            if (!move_done_pulse && move_done_prev) begin
+                already_sent_done <= 0;
+            end
+
+            // Trigger: Level-based. If stopped and not reported yet, queue it.
+            if (move_done_pulse && !already_sent_done) begin
+                report_pending <= 1;
+            end
+
+            // Capture the move from the sequencer
+            last_valid_move <= next_move;
+
+            case (state)
+                S_IDLE: begin
+                    busy <= 0;
+                    msg_len <= 0;
+                    crlf_idx <= 0;
+                    
+                    if (report_pending) begin
+                        if (report_delay_cnt < 128) begin 
+                            report_delay_cnt <= report_delay_cnt + 1;
+                        end else begin
+                            busy <= 1;
+                            done_idx <= 0;
+                            already_sent_done <= 1; // Mark as reported for THIS stop
+                            report_pending <= 0;    
+                            report_delay_cnt <= 0;
+                            state <= S_SEND_DONE;
+                        end
+                    end
+                    else if (bt_debug_enable && rx_complete) begin
+                        msg_buf[0] <= rx_msg;
+                        msg_len <= 1;
+                        state <= S_BUFFERING;
+                    end
+                end
+                
+                S_BUFFERING: begin
+                    if (rx_complete && bt_debug_enable) begin
+                        if (msg_len < 31) begin
+                            msg_buf[msg_len] <= rx_msg;
+                            msg_len <= msg_len + 1;
+                        end
+                        if (rx_msg == "#") begin
+                            busy <= 1;
+                            state <= S_VALIDATE;
+                        end
+                    end
+                end
+
+                S_VALIDATE: begin
+                    // 1. START Command (Hardware born with permission)
+                    if (msg_buf[0] == "S" && msg_buf[1] == "T" && msg_buf[2] == "A" && 
+                        msg_buf[3] == "R" && msg_buf[4] == "T" && msg_buf[5] == "-") begin
+                        deadend_count <= msg_buf[6] - 8'h30;
+                        bt_ready <= 1;
+                        ok_idx <= 0;
+                        state <= S_SEND_OK;
+                    end 
+                    // 2. OK Command
+                    else if (msg_buf[0] == "O" && msg_buf[1] == "K") begin
+                        proceed <= 1; // Pulse Start
+                        ok_idx <= 0;
+                        state <= S_SEND_OK;
+                    end
+                    else begin
+                        state <= S_IDLE;
+                    end
+                end
+
+                S_SEND_DONE: begin
+                    proceed <= 0; // Force clear
+                    // Packet: DONE-L-M-R-X-Y-M-# (15 chars)
+                    case (done_idx)
+                        0:  tx_data <= "D"; 1: tx_data <= "O"; 2: tx_data <= "N"; 3: tx_data <= "E";
+                        4:  tx_data <= "-"; 5: tx_data <= to_ascii({3'b0, wall_l});
+                        6:  tx_data <= "-"; 7: tx_data <= to_ascii({3'b0, wall_m});
+                        8:  tx_data <= "-"; 9: tx_data <= to_ascii({3'b0, wall_r});
+                        10: tx_data <= "-"; 11: tx_data <= to_ascii(pos[7:4]); // X
+                        12: tx_data <= "-"; 13: tx_data <= to_ascii(pos[3:0]); // Y
+                        14: tx_data <= "-"; 15: tx_data <= to_ascii({1'b0, last_valid_move});
+                        16: tx_data <= "-"; 17: tx_data <= "#";
+                    endcase
+                    tx_start <= 1;
+                    return_state <= (done_idx == 17) ? S_SEND_CRLF : S_SEND_DONE;
+                    if (done_idx < 17) done_idx <= done_idx + 1;
+                    state <= S_TX_WAIT;
+                end
+                
+                S_SEND_OK: begin
+                    proceed <= 0; // Ensure pulse is cleared
+                    case (ok_idx)
+                        0: tx_data <= "O";
+                        1: tx_data <= "K";
+                        2: tx_data <= "-";
+                    endcase
+                    tx_start <= 1;
+                    // After sending "OK-", transition to SEND_MSG to echo the rest
+                    if (ok_idx == 2) begin
+                        ok_idx <= 0;
+                        tx_idx <= 0;
+                        state <= S_TX_WAIT;
+                        return_state <= S_SEND_MSG;
+                    end else begin
+                        ok_idx <= ok_idx + 1;
+                        state <= S_TX_WAIT;
+                        return_state <= S_SEND_OK;
+                    end
+                end
+                
+                S_SEND_MSG: begin
+                    if (tx_idx < msg_len) begin
+                        tx_data <= msg_buf[tx_idx];
+                        tx_start <= 1;
+                        tx_idx <= tx_idx + 1;
+                        return_state <= S_SEND_MSG;
+                        state <= S_TX_WAIT;
+                    end else begin
+                        crlf_idx <= 0;
+                        state <= S_SEND_CRLF;
+                    end
+                end
+                
+                S_SEND_CRLF: begin
+                    tx_data <= (crlf_idx == 0) ? 8'h0D : 8'h0A;
+                    tx_start <= 1;
+                    return_state <= (crlf_idx == 0) ? S_SEND_CRLF : S_IDLE;
+                    crlf_idx <= 1;
+                    state <= S_TX_WAIT;
+                end
+                
+                S_TX_WAIT: begin
+                    if (tx_done) begin
+                        gap_timer <= 0;
+                        state <= S_TX_GAP;
+                    end
+                end
+
+                S_TX_GAP: begin
+                    if (gap_timer < 1000) gap_timer <= gap_timer + 1;
+                    else state <= return_state;
+                end
+            endcase
+        end
+    end
+
+endmodule

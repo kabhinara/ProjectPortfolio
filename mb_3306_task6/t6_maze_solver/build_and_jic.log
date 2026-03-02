@@ -1,0 +1,51 @@
+--------------------------------------------------------
+Starting FPGA Build and Program Sequence
+--------------------------------------------------------
+[1/4] Compiling Project: t4_maze_runner...
+Info: *******************************************************************
+Info: Running Quartus Prime Shell
+    Info: Version 20.1.0 Build 711 06/05/2020 SJ Lite Edition
+    Info: Copyright (C) 2020  Intel Corporation. All rights reserved.
+    Info: Your use of Intel Corporation's design tools, logic functions 
+    Info: and other software and tools, and any partner logic 
+    Info: functions, and any output files from any of the foregoing 
+    Info: (including device programming or simulation files), and any 
+    Info: associated documentation or information are expressly subject 
+    Info: to the terms and conditions of the Intel Program License 
+    Info: Subscription Agreement, the Intel Quartus Prime License Agreement,
+    Info: the Intel FPGA IP License Agreement, or other applicable license
+    Info: agreement, including, without limitation, that your use is for
+    Info: the sole purpose of programming logic devices manufactured by
+    Info: Intel and sold by Intel or its authorized distributors.  Please
+    Info: refer to the applicable agreement for further details, at
+    Info: https://fpgasoftware.intel.com/eula.
+    Info: Processing started: Sun Feb 22 22:32:15 2026
+Info: Command: quartus_sh --flow compile t4_maze_runner
+Info: Quartus(args): compile t4_maze_runner
+Info: Project Name = /home/abhinav/e_yantra/Testing/Task 4 Versions/no_parity/goat/t4_maze_runner/t4_maze_runner
+Info: Revision Name = t4_maze_runner
+Info: *******************************************************************
+Info: Running Quartus Prime Analysis & Synthesis
+    Info: Version 20.1.0 Build 711 06/05/2020 SJ Lite Edition
+    Info: Processing started: Sun Feb 22 22:32:15 2026
+Info: Command: quartus_map --read_settings_files=on --write_settings_files=off t4_maze_runner -c t4_maze_runner
+Info (20034): Auto device selection is not supported for Cyclone V device family. The default device, 5CGXFC7C7F23C8, is set.
+Warning (18236): Number of processors has not been specified which may cause overloading on shared machines.  Set the global assignment NUM_PARALLEL_PROCESSORS in your QSF to an appropriate value for best performance.
+Info (20030): Parallel compilation is enabled and will use 16 of the 16 processors detected
+Error (12007): Top-level design entity "t4_maze_runner" is undefined
+Error: Quartus Prime Analysis & Synthesis was unsuccessful. 1 error, 1 warning
+    Error: Peak virtual memory: 404 megabytes
+    Error: Processing ended: Sun Feb 22 22:32:22 2026
+    Error: Elapsed time: 00:00:07
+    Error: Total CPU time (on all processors): 00:00:23
+Error (293001): Quartus Prime Full Compilation was unsuccessful. 3 errors, 1 warning
+Error: Flow compile (for project /home/abhinav/e_yantra/Testing/Task 4 Versions/no_parity/goat/t4_maze_runner/t4_maze_runner) was not successful
+Error: ERROR: Error(s) found while running an executable. See report file(s) for error message(s). Message log indicates which executable was run last.
+
+Error (23031): Evaluation of Tcl script /home/abhinav/intelFPGA_lite/20.1/quartus/common/tcl/internal/qsh_flow.tcl unsuccessful
+Error: Quartus Prime Shell was unsuccessful. 10 errors, 1 warning
+    Error: Peak virtual memory: 484 megabytes
+    Error: Processing ended: Sun Feb 22 22:32:22 2026
+    Error: Elapsed time: 00:00:07
+    Error: Total CPU time (on all processors): 00:00:24
+Error: Compilation failed.

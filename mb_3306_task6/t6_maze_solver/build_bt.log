@@ -1,0 +1,6 @@
+--------------------------------------------------------
+Starting FPGA Build and Program Sequence
+--------------------------------------------------------
+[1/4] Compiling Project: t4_maze_runner...
+./build_and_program.sh: line 18: /home/abhinav/intelFPGA_lite/20.1/quartus/bin/quartus_sh: No such file or directory
+Error: Compilation failed.

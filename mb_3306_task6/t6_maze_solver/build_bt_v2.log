@@ -1,0 +1,92 @@
+--------------------------------------------------------
+Starting FPGA Build and Program Sequence
+--------------------------------------------------------
+[1/4] Compiling Project: t4_maze_runner...
+Info: *******************************************************************
+Info: Running Quartus Prime Shell
+    Info: Version 20.1.0 Build 711 06/05/2020 SJ Lite Edition
+    Info: Copyright (C) 2020  Intel Corporation. All rights reserved.
+    Info: Your use of Intel Corporation's design tools, logic functions 
+    Info: and other software and tools, and any partner logic 
+    Info: functions, and any output files from any of the foregoing 
+    Info: (including device programming or simulation files), and any 
+    Info: associated documentation or information are expressly subject 
+    Info: to the terms and conditions of the Intel Program License 
+    Info: Subscription Agreement, the Intel Quartus Prime License Agreement,
+    Info: the Intel FPGA IP License Agreement, or other applicable license
+    Info: agreement, including, without limitation, that your use is for
+    Info: the sole purpose of programming logic devices manufactured by
+    Info: Intel and sold by Intel or its authorized distributors.  Please
+    Info: refer to the applicable agreement for further details, at
+    Info: https://fpgasoftware.intel.com/eula.
+    Info: Processing started: Sat Feb  7 19:09:57 2026
+Info: Command: quartus_sh --flow compile t4_maze_runner
+Info: Quartus(args): compile t4_maze_runner
+Info: Project Name = /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/t4_maze_runner
+Info: Revision Name = t4_maze_runner
+Info: *******************************************************************
+Info: Running Quartus Prime Analysis & Synthesis
+    Info: Version 20.1.0 Build 711 06/05/2020 SJ Lite Edition
+    Info: Processing started: Sat Feb  7 19:09:58 2026
+Info: Command: quartus_map --read_settings_files=on --write_settings_files=off t4_maze_runner -c t4_maze_runner
+Warning (18236): Number of processors has not been specified which may cause overloading on shared machines.  Set the global assignment NUM_PARALLEL_PROCESSORS in your QSF to an appropriate value for best performance.
+Info (20030): Parallel compilation is enabled and will use 8 of the 8 processors detected
+Info (12021): Found 1 design units, including 1 entities, in source file code/wall_centering_controller.v
+    Info (12023): Found entity 1: wall_centering_controller File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/wall_centering_controller.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/ultrasonic.v
+    Info (12023): Found entity 1: ultrasonic File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/ultrasonic.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/uart_tx.v
+    Info (12023): Found entity 1: uart_tx File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/uart_tx.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/uart_rx.v
+    Info (12023): Found entity 1: uart_rx File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/uart_rx.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file code/t4_maze_runner.v
+    Info (12023): Found entity 1: t4_maze_runner File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/t4_maze_runner.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/synchronizer.v
+    Info (12023): Found entity 1: synchronizer File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/synchronizer.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/quadrature_decoder.v
+    Info (12023): Found entity 1: quadrature_decoder File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/quadrature_decoder.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/pwm_generator.v
+    Info (12023): Found entity 1: pwm_generator File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/pwm_generator.v Line: 2
+Info (12021): Found 1 design units, including 1 entities, in source file code/pledge.v
+    Info (12023): Found entity 1: pledge File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/pledge.v Line: 3
+Info (12021): Found 1 design units, including 1 entities, in source file code/pid_controller.v
+    Info (12023): Found entity 1: pid_controller File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/pid_controller.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/pid.v
+    Info (12023): Found entity 1: pid File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/pid.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/move_instr.v
+    Info (12023): Found entity 1: move_instr File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/move_instr.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/motor_driver.v
+    Info (12023): Found entity 1: motor_driver File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/motor_driver.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/frequency_scaling.v
+    Info (12023): Found entity 1: frequency_scaling File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/frequency_scaling.v Line: 2
+Error (10170): Verilog HDL syntax error at bt_debug.v(38) near text: "begin". Check for and fix any syntax errors that appear immediately before or at the specified keyword. The Intel FPGA Knowledge Database contains many articles with specific details on how to resolve this error. Visit the Knowledge Database at https://www.altera.com/support/support-resources/knowledge-base/search.html and search for this specific error message number. File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 38
+Error (10759): Verilog HDL error at bt_debug.v(43): object wall_l declared in a list of port declarations cannot be redeclared within the module body File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 43
+Error (10759): Verilog HDL error at bt_debug.v(44): object wall_m declared in a list of port declarations cannot be redeclared within the module body File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 44
+Error (10759): Verilog HDL error at bt_debug.v(45): object wall_r declared in a list of port declarations cannot be redeclared within the module body File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 45
+Error (10170): Verilog HDL syntax error at bt_debug.v(117) near text: "end"; "end" without "begin" . Check for and fix any syntax errors that appear immediately before or at the specified keyword. The Intel FPGA Knowledge Database contains many articles with specific details on how to resolve this error. Visit the Knowledge Database at https://www.altera.com/support/support-resources/knowledge-base/search.html and search for this specific error message number. File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 117
+Error (10170): Verilog HDL syntax error at bt_debug.v(118) near text: "end"; "end" without "begin" . Check for and fix any syntax errors that appear immediately before or at the specified keyword. The Intel FPGA Knowledge Database contains many articles with specific details on how to resolve this error. Visit the Knowledge Database at https://www.altera.com/support/support-resources/knowledge-base/search.html and search for this specific error message number. File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 118
+Error (10112): Ignored design unit "bt_debug" at bt_debug.v(1) due to previous errors File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/bt_debug.v Line: 1
+Info (12021): Found 0 design units, including 0 entities, in source file code/bt_debug.v
+Info (12021): Found 1 design units, including 1 entities, in source file code/t2a_dht.v
+    Info (12023): Found entity 1: t2a_dht File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/t2a_dht.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/adc_controller.v
+    Info (12023): Found entity 1: adc_controller File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/adc_controller.v Line: 1
+Info (12021): Found 1 design units, including 1 entities, in source file code/servo_control.v
+    Info (12023): Found entity 1: servo_control File: /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/code/servo_control.v Line: 1
+Info (144001): Generated suppressed messages file /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/output_files/t4_maze_runner.map.smsg
+Error: Quartus Prime Analysis & Synthesis was unsuccessful. 7 errors, 1 warning
+    Error: Peak virtual memory: 343 megabytes
+    Error: Processing ended: Sat Feb  7 19:10:02 2026
+    Error: Elapsed time: 00:00:04
+    Error: Total CPU time (on all processors): 00:00:10
+Error (293001): Quartus Prime Full Compilation was unsuccessful. 9 errors, 1 warning
+Error: Flow compile (for project /home/nimal/Documents/Task 4 Versions/bt_parity_basic_debug/t4_maze_runner/t4_maze_runner) was not successful
+Error: ERROR: Error(s) found while running an executable. See report file(s) for error message(s). Message log indicates which executable was run last.
+
+Error (23031): Evaluation of Tcl script /home/nimal/intelFPGA_lite/20.1/quartus/common/tcl/internal/qsh_flow.tcl unsuccessful
+Error: Quartus Prime Shell was unsuccessful. 16 errors, 1 warning
+    Error: Peak virtual memory: 485 megabytes
+    Error: Processing ended: Sat Feb  7 19:10:02 2026
+    Error: Elapsed time: 00:00:05
+    Error: Total CPU time (on all processors): 00:00:10
+Error: Compilation failed.

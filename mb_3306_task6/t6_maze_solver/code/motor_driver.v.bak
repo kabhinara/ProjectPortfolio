@@ -1,0 +1,404 @@
+module motor_driver (
+    input clk_50M,
+    input rst_n,
+    input len1, len2, ren1, ren2, echo_mid, echo_left, echo_right,
+    input ir_top,
+    input proceed,
+    output reg [7:0] pos_out,
+    output reg lin1, lin2, rin1, rin2,
+    output wire enal, enar, trig_mid, trig_left, trig_right,
+    output wire [2:0] current_move,
+    output wire stop_done, // RENAMED and widened
+    output wire wall_left, wall_mid, wall_right
+);
+
+    // ==========================================
+    // PARAMS & CONSTANTS
+    // ==========================================
+    localparam integer TARGET_SPEED_MAX = 60;   
+    localparam integer TUNING_KP = 8;
+    localparam integer TUNING_KI = 0;
+    localparam integer TUNING_KD = 3;
+    localparam [7:0] SPIN_PWM = 8'd150; 
+    
+    // TIMING & COUNTS (TICKS/CYCLES)
+    localparam [31:0] TURN_TICKS      = 3000;       // 90 degree turn
+    localparam [31:0] UTURN_TICKS     = 6000;       // 180 degree turn
+    localparam [31:0] UTURN_TIME      = 32000000;   // 0.64s @50MHz (Legacy)
+    localparam [31:0] BRAKE_TIME      = 10000000;   // 0.2s pause
+    localparam [31:0] ALIGN_TIME      = 2500000;    // 0.05s alignment step
+    localparam [31:0] FWD_GATE_TIME   = 50000000;   // 1s startup delay
+    localparam [31:0] FWD_MAX_TICKS   = 9200;       // Max forward dist
+    localparam [31:0] EDGE_POST_TICKS = 4000;       // Post-edge dist
+    
+    // STATES
+    localparam STATE_IDLE   = 3'd0;
+    localparam STATE_PREP   = 3'd1;
+    localparam STATE_SPIN   = 3'd2;
+    localparam STATE_BRAKE  = 3'd3;
+    localparam STATE_DRIVE  = 3'd4;
+    localparam STATE_ALIGN  = 3'd5;
+    localparam STATE_FINISH = 3'd6;
+
+    // ==========================================
+    // I/O & SENSORS
+    // ==========================================
+    assign wall_left = left;
+    assign wall_mid = mid;
+    assign wall_right = right;
+
+    wire clk_3125K, clk_195K, clk_12K, clk_95;
+    wire left, mid, right;
+    wire [15:0] distance_mid, distance_left, distance_right;
+    
+    // PWM & CLOCK
+    frequency_scaling f3125K (.clk_16x(clk_50M), .rst_n(rst_n), .clk_1x(clk_3125K));
+    frequency_scaling f195K (.clk_16x(clk_3125K), .rst_n(rst_n), .clk_1x(clk_195K));
+    frequency_scaling f12K (.clk_16x(clk_195K), .rst_n(rst_n), .clk_1x(clk_12K));
+
+    wire [7:0] pwm_left, pwm_right;
+    wire [7:0] drive_pwm_l, drive_pwm_r; // From WCC
+    wire [7:0] pid_out_left, pid_out_right; // From PID
+
+    pwm_generator pg_enal (clk_12K, pwm_left, clk_95, enal);
+    pwm_generator pg_enar (clk_12K, pwm_right, , enar);
+
+    // SENSORS
+    ultrasonic #(90, 120) us_mid (clk_50M, 1'b1, echo_mid, trig_mid, mid, distance_mid); // 90/120mm thresholds
+    ultrasonic #(120, 150) us_left (clk_50M, 1'b1, echo_left, trig_left, left, distance_left);
+    ultrasonic #(120, 150) us_right (clk_50M, 1'b1, echo_right, trig_right, right, distance_right);
+
+    // ==========================================
+    // ENCODERS & SPEED
+    // ==========================================
+    reg signed [31:0] count_left = 0, count_right = 0;
+    reg signed [31:0] last_count_left = 0, last_count_right = 0;
+    reg signed [31:0] measured_speed_left = 0, measured_speed_right = 0;
+    reg [2:0] leftA_delayed, leftB_delayed, rightA_delayed, rightB_delayed;
+    reg [18:0] sample_counter = 0;
+    reg sample_enable = 0;
+
+    wire left_enable = leftA_delayed[1] ^ leftA_delayed[2] ^ leftB_delayed[1] ^ leftB_delayed[2];
+    wire left_direction = leftA_delayed[1] ^ leftB_delayed[2];
+    wire right_enable = rightA_delayed[1] ^ rightA_delayed[2] ^ rightB_delayed[1] ^ rightB_delayed[2];
+    wire right_direction = rightA_delayed[1] ^ rightB_delayed[2];
+
+    // rst_n is now an external input from t4_maze_runner
+
+    // Encoder Process
+    always @(posedge clk_50M) begin
+        if (!rst_n) begin
+            count_left <= 0; count_right <= 0;
+            leftA_delayed <= 0; leftB_delayed <= 0;
+            rightA_delayed <= 0; rightB_delayed <= 0;
+        end else begin
+            leftA_delayed <= {leftA_delayed[1:0], len2};
+            leftB_delayed <= {leftB_delayed[1:0], len1};
+            rightA_delayed <= {rightA_delayed[1:0], ren2};
+            rightB_delayed <= {rightB_delayed[1:0], ren1};
+
+            if(left_enable) count_left <= (left_direction) ? count_left + 1 : count_left - 1;
+            if(right_enable) count_right <= (right_direction) ? count_right + 1 : count_right - 1;
+
+            if (sample_counter >= 500000) begin
+                sample_counter <= 0;
+                sample_enable <= 1;
+                measured_speed_left <= count_left - last_count_left;
+                measured_speed_right <= count_right - last_count_right;
+                last_count_left <= count_left;
+                last_count_right <= count_right;
+            end else begin
+                sample_counter <= sample_counter + 1;
+                sample_enable <= 0;
+            end
+        end
+    end
+
+    // ==========================================
+    // CONTROLLERS
+    // ==========================================
+    reg signed [31:0] target_speed_left, target_speed_right;
+    reg [2:0] sys_state; // Moved up for wcc_enable
+
+    function [31:0] abs;
+        input signed [31:0] val;
+        begin abs = (val < 0) ? -val : val; end
+    endfunction
+    
+    function [31:0] abs_diff32;
+        input [31:0] a, b;
+        reg signed [31:0] diff;
+        begin diff = a - b; abs_diff32 = (diff < 0) ? -diff : diff; end
+    endfunction
+
+    // Wall Centering
+    wire wcc_enable = (sys_state == STATE_DRIVE); 
+    wall_centering_controller wcc (
+        .clk(clk_50M),
+        .dist_left(distance_left), .dist_right(distance_right),
+        .valid_left(left), .valid_right(right),
+        .enable(wcc_enable),
+        .pwm_left(drive_pwm_l), .pwm_right(drive_pwm_r)
+    );
+
+    // PID for Spin
+    pid_controller #(.Kp(TUNING_KP), .Ki(TUNING_KI), .Kd(TUNING_KD)) pid_l (
+        .clk(clk_50M), .rst_n(rst_n), .sample_enable(sample_enable), .clk_adj(clk_95),
+        .target_val(target_speed_left), .current_val(abs(measured_speed_left)), .pwm_out(pid_out_left)
+    );
+    pid_controller #(.Kp(TUNING_KP), .Ki(TUNING_KI), .Kd(TUNING_KD)) pid_r (
+        .clk(clk_50M), .rst_n(rst_n), .sample_enable(sample_enable), .clk_adj(clk_95),
+        .target_val(target_speed_right), .current_val(abs(measured_speed_right)), .pwm_out(pid_out_right)
+    );
+
+    // ==========================================
+    // FSM LOGIC
+    // ==========================================
+    reg [2:0] prev_move;
+    reg [31:0] state_timer;
+    reg [31:0] capture_l, capture_r; // Captured encoder values at state entry
+    reg [2:0] proceed_sync; // Synchronizer for CDC
+    reg proceed_latch; // Latch to catch the proceed pulse
+    reg proceed_active; // Flag for signal level
+    
+    // FSM Registers
+    reg [31:0] target_ticks_u32;
+    reg [31:0] target_time_u32;
+    reg [3:0] dir_bits; // {l1, l2, r1, r2}
+    reg use_timer_for_spin;
+    reg has_brake_stage;
+    reg has_drive_stage;
+    
+    // Move Sequencer
+    wire [2:0] move_wire;
+    wire [7:0] pos_internal;
+    always @(*) pos_out = pos_internal;
+
+    move_instr sequencer (
+        .clk(clk_50M),
+        .rst_n(rst_n),
+        .move_done(stop_done), // Wired directly to stationary signal
+        .proceed(proceed_latch), // Optional: can be used for extra gating if needed
+        .left(wall_left), .mid(wall_mid), .right(wall_right),
+        .pos_out(pos_internal),
+        .move(move_wire)
+    );
+    
+    assign current_move = move_wire;
+    // stop_done: High as long as the robot is waiting at its destination
+    assign stop_done = (sys_state == STATE_FINISH) || (sys_state == STATE_IDLE && prev_move == 3'b000);
+
+    // Motor Output Mux
+    reg [7:0] pwm_left_mux, pwm_right_mux;
+    always @(*) begin
+        if (sys_state == STATE_SPIN) begin
+            // SPIN uses PID outputs (or fixed PWM if needed, but original used PID for turns)
+            pwm_left_mux = SPIN_PWM; 
+            pwm_right_mux = SPIN_PWM;
+            // Original used SPIN_PWM=150 constant, NOT PID output, for 010/011/100
+            // But PID instances are instantiated. Let's check original.
+            // Original: "assign pwm_left = (move...SPIN) ? SPIN_PWM". Yes, Fixed PWM.
+            // Wait, PID IS instantiated but "assign" uses SPIN_PWM.
+            // I will respect original logic: Use SPIN_PWM.
+        end else if (sys_state == STATE_DRIVE) begin
+            pwm_left_mux = drive_pwm_l; // WCC output
+            pwm_right_mux = drive_pwm_r;
+        end else begin
+            pwm_left_mux = 255; // Stop/Brake effectively
+            pwm_right_mux = 255;
+        end
+    end
+    
+    assign pwm_left = pwm_left_mux;
+    assign pwm_right = pwm_right_mux;
+
+    // Edge Detection Register
+    reg edge_detected;
+    reg [21:0] edge_debounce_timer;
+    reg [31:0] edge_start_l, edge_start_r;
+    reg first_move_gate; // Latch for 1s startup delay
+
+    always @(posedge clk_50M) begin
+        if (!rst_n) begin
+            sys_state <= STATE_IDLE;
+            prev_move <= 3'b111;
+            state_timer <= 0;
+            lin1<=1; lin2<=1; rin1<=1; rin2<=1;
+            first_move_gate <= 1;
+            edge_debounce_timer <= 0;
+            proceed_latch <= 1; // Born with permission for Move 1
+            proceed_sync <= 0;
+            proceed_active <= 0;
+        end else begin
+            
+            // Synchronize and detect RISING EDGE of proceed
+            proceed_sync <= {proceed_sync[1:0], proceed};
+            if (proceed_sync[1] && !proceed_sync[2]) proceed_latch <= 1;
+            proceed_active <= proceed_sync[1]; // Track the level
+
+            // Check for Move Change - Wait for Proceed latch
+            if (move_wire != prev_move) begin
+                // 1. Automatic transitions for STOP or Initialization
+                if (move_wire == 3'b000 || prev_move == 3'b111) begin
+                    sys_state <= STATE_PREP;
+                    prev_move <= move_wire;
+                    edge_debounce_timer <= 0;
+                end
+                // 2. Gated transitions for Real Moves (Forward, Turn, etc)
+                // Must have latch AND the slow pulse must have cleared
+                else if (proceed_latch && !proceed_active) begin
+                    sys_state <= STATE_PREP;
+                    prev_move <= move_wire;
+                    edge_debounce_timer <= 0;
+                    proceed_latch <= 0; // Consume the latch
+                end
+            end 
+            else begin
+                case (sys_state)
+                    // --------------------------------------------------------
+                    // IDLE
+                    // --------------------------------------------------------
+                    STATE_IDLE: begin
+                        lin1<=1; lin2<=1; rin1<=1; rin2<=1;
+                    end
+
+                    // --------------------------------------------------------
+                    // PREP: Load Parameters
+                    // --------------------------------------------------------
+                    STATE_PREP: begin
+                        capture_l <= count_left;
+                        capture_r <= count_right;
+                        state_timer <= 0;
+                        edge_detected <= 0;
+                        edge_debounce_timer <= 0;
+                        
+                        case (move_wire)
+                            3'b000: begin // STOP
+                                sys_state <= STATE_IDLE;
+                            end
+                            3'b001: begin // FORWARD
+                                dir_bits <= 4'b1010; // FWD
+                                has_brake_stage <= 0;
+                                sys_state <= STATE_DRIVE;
+                            end
+                            3'b010: begin // LEFT
+                                dir_bits <= 4'b0110; // Left CW (L back, R fwd)? No, Left Turn usually Left Back, Right Fwd
+                                // Original: lin1=0, lin2=1 (Back), rin1=1, rin2=0 (Fwd). Correct.
+                                target_ticks_u32 <= TURN_TICKS;
+                                use_timer_for_spin <= 0;
+                                has_brake_stage <= 1;
+                                has_drive_stage <= 1;
+                                sys_state <= STATE_SPIN;
+                            end
+                            3'b011: begin // RIGHT
+                                dir_bits <= 4'b1001; // Right CCW (L fwd, R back)
+                                target_ticks_u32 <= TURN_TICKS;
+                                use_timer_for_spin <= 0;
+                                has_brake_stage <= 1;
+                                has_drive_stage <= 1;
+                                sys_state <= STATE_SPIN;
+                            end
+                            3'b100: begin // U-TURN
+                                dir_bits <= 4'b1001; 
+                                target_ticks_u32 <= UTURN_TICKS;
+                                use_timer_for_spin <= 0;
+                                has_brake_stage <= 1;
+                                has_drive_stage <= 1;
+                                sys_state <= STATE_SPIN;
+                            end
+                            default: sys_state <= STATE_IDLE;
+                        endcase
+                    end
+
+                    // --------------------------------------------------------
+                    // SPIN: Execute Rotation
+                    // --------------------------------------------------------
+                    STATE_SPIN: begin
+                        lin1 <= dir_bits[3]; lin2 <= dir_bits[2];
+                        rin1 <= dir_bits[1]; rin2 <= dir_bits[0];
+                        
+                        // All spins are now Encoder Based
+                        if (abs_diff32(count_left, capture_l) + abs_diff32(count_right, capture_r) > target_ticks_u32) begin
+                            sys_state <= STATE_BRAKE;
+                            state_timer <= 0;
+                        end
+                    end
+
+                    // --------------------------------------------------------
+                    // BRAKE: Brief Pause
+                    // --------------------------------------------------------
+                    STATE_BRAKE: begin
+                        lin1<=1; lin2<=1; rin1<=1; rin2<=1;
+                        if (state_timer < BRAKE_TIME) state_timer <= state_timer + 1; // 0.2s pause (guess, original had various delays)
+                        // Original Left/Right Turn: "seq_state==2" (BRAKE) -> "main_timer < 0"?? It had 0000000 in code.
+                        // Assuming small pause is good.
+                        else begin
+                            state_timer <= 0;
+                            capture_l <= count_left; // Reset base for Drive
+                            capture_r <= count_right;
+                            if (has_drive_stage) sys_state <= STATE_DRIVE;
+                            else sys_state <= STATE_FINISH;
+                        end
+                    end
+
+                    // --------------------------------------------------------
+                    // ALIGN: U-Turn Fine Tuning
+                    // --------------------------------------------------------
+                    STATE_ALIGN: begin
+                         // Original U-Turn ALIGN: "STEPPED ALIGN (0.15s steps)"
+                         lin1<=1; lin2<=0; rin1<=0; rin2<=1; // Spin Direction
+                         if (state_timer < ALIGN_TIME) state_timer <= state_timer + 1;
+                         else begin
+                            if (distance_mid < 120) state_timer <= 0; // Keep spinning if wall close? 
+                            // Original: if (mid < 120) timer<=0 (stay). else seq_state<=2 (BRAKE/EXTRA).
+                            else begin
+                                 // Extra rotation 0.05s
+                                 // Simplified: Just go to Brake/Drive
+                                 sys_state <= STATE_BRAKE;
+                                 state_timer <= 0;
+                            end
+                         end
+                    end
+
+                    // --------------------------------------------------------
+                    // DRIVE: Forward Motion
+                    // --------------------------------------------------------
+                    STATE_DRIVE: begin
+                        lin1<=1; lin2<=0; rin1<=1; rin2<=0; // Fwd
+                        
+                        // Startup Gate logic (Only for Move 001)
+                        if (move_wire == 3'b001 && first_move_gate) begin
+                            if (state_timer < FWD_GATE_TIME) state_timer <= state_timer + 1;
+                            else begin
+                                first_move_gate <= 0;
+                                state_timer <= 0; 
+                            end
+                        end
+                        else begin
+                            // Stop Conditions
+                            // 1. Emergency Front
+                            if (distance_mid <= 75) sys_state <= STATE_FINISH;
+                            // 2. Max Distance (Tile Complete)
+                            else if (abs_diff32(count_left, capture_l) + abs_diff32(count_right, capture_r) > FWD_MAX_TICKS) begin
+                                if (distance_mid < 250) begin
+                                    // Wall Magnet (Wait for mid wall if close)
+                                end else begin
+                                    sys_state <= STATE_FINISH;
+                                end
+                            end
+                        end
+                    end
+
+                    // --------------------------------------------------------
+                    // FINISH
+                    // --------------------------------------------------------
+                    STATE_FINISH: begin
+                        lin1<=1; lin2<=1; rin1<=1; rin2<=1; // Brake
+                        // Stay here until move changes (handled by top if `move != prev_move`)
+                    end
+                endcase
+            end
+        end
+    end
+
+endmodule
